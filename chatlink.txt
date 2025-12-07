@@ -1,1 +1,575 @@
 https://chatgpt.com/share/6935a0f6-aaf4-8001-b237-206a0619173e
+
+
+
+Here’s everything cleaned up so you can **copy–paste and run** without surprises.
+I’ll first fix each **program**, then list **correct compile/run steps**.
+
+---
+
+## 1️⃣ OpenMP – Sequential vs Parallel Merge Sort (using `sections`)
+
+**File name:** `set.cpp` (Dev-C++, OpenMP Console Project)
+
+### Corrected code
+
+```cpp
+#include <stdio.h>
+#include <stdlib.h>
+#include <omp.h>
+#include <time.h>
+
+#define N 100000          // Size of the array
+#define THRESHOLD 1000    // Switch to sequential for small subarrays
+
+void merge(int arr[], int l, int m, int r) {
+    int i, j, k;
+    int n1 = m - l + 1;
+    int n2 = r - m;
+
+    int *L = (int *)malloc(n1 * sizeof(int));
+    int *R = (int *)malloc(n2 * sizeof(int));
+
+    if (L == NULL || R == NULL) {
+        printf("Memory allocation failed\n");
+        exit(1);
+    }
+
+    for (i = 0; i < n1; i++) L[i] = arr[l + i];
+    for (j = 0; j < n2; j++) R[j] = arr[m + 1 + j];
+
+    i = 0; j = 0; k = l;
+    while (i < n1 && j < n2)
+        arr[k++] = (L[i] <= R[j]) ? L[i++] : R[j++];
+
+    while (i < n1) arr[k++] = L[i++];
+    while (j < n2) arr[k++] = R[j++];
+
+    free(L);
+    free(R);
+}
+
+void mergeSortSeq(int arr[], int l, int r) {
+    if (l < r) {
+        int m = (l + r) / 2;
+        mergeSortSeq(arr, l, m);
+        mergeSortSeq(arr, m + 1, r);
+        merge(arr, l, m, r);
+    }
+}
+
+// parallel mergesort using OpenMP sections
+void mergeSortParallel(int arr[], int l, int r) {
+    if (r - l + 1 <= THRESHOLD) {
+        // small size → do sequential
+        mergeSortSeq(arr, l, r);
+        return;
+    }
+
+    if (l < r) {
+        int m = (l + r) / 2;
+
+        #pragma omp parallel sections
+        {
+            #pragma omp section
+            {
+                mergeSortSeq(arr, l, m);   // you can also call mergeSortParallel here
+            }
+            #pragma omp section
+            {
+                mergeSortSeq(arr, m + 1, r);
+            }
+        }
+        merge(arr, l, m, r);
+    }
+}
+
+void fillArray(int arr[], int size) {
+    for (int i = 0; i < size; i++)
+        arr[i] = rand() % 100000;
+}
+
+void copyArray(int src[], int dest[], int size) {
+    for (int i = 0; i < size; i++)
+        dest[i] = src[i];
+}
+
+int main() {
+    int *a1 = (int *)malloc(N * sizeof(int));
+    int *a2 = (int *)malloc(N * sizeof(int));
+    double start, end;
+
+    if (a1 == NULL || a2 == NULL) {
+        printf("Memory allocation failed\n");
+        return 1;
+    }
+
+    srand((unsigned)time(NULL));
+
+    fillArray(a1, N);
+    copyArray(a1, a2, N);
+
+    // Sequential Merge Sort
+    start = omp_get_wtime();
+    mergeSortSeq(a1, 0, N - 1);
+    end = omp_get_wtime();
+    printf("Sequential Merge Sort Time: %.6f seconds\n", end - start);
+
+    // Parallel Merge Sort (using sections)
+    start = omp_get_wtime();
+    mergeSortParallel(a2, 0, N - 1);
+    end = omp_get_wtime();
+    printf("Parallel Merge Sort Time: %.6f seconds\n", end - start);
+
+    free(a1);
+    free(a2);
+    return 0;
+}
+```
+
+### Steps (Dev-C++)
+
+1. **File → New → Project → Console Application → C++ →** tick **OpenMP** (if available).
+2. Name the project, save.
+3. **Right click Project → Add new file → `set.cpp`**, paste the code.
+4. **Execute → Compile & Run**.
+   You’ll see both sequential and parallel times.
+
+> If you use command line with MinGW:
+> `g++ set.cpp -fopenmp -o set.exe`
+
+---
+
+## 2️⃣ OpenMP – `schedule(static, 2)` loop demo
+
+**File:** `set.cpp` (or another name, like `schedule.cpp`)
+
+> You asked for `OMP_SCHEDULE=static,2` but the code had `static, 4`. Fixed below.
+
+```cpp
+#include <stdio.h>
+#include <omp.h>
+
+int main() {
+    int n;
+
+    printf("Enter number of iterations: ");
+    scanf("%d", &n);
+
+    // For predictable output like example, set threads explicitly (optional)
+    omp_set_num_threads(2);
+
+    printf("\nUsing schedule(static,2)\n");
+
+    #pragma omp parallel for schedule(static, 2)
+    for (int i = 0; i < n; i++) {
+        int tid = omp_get_thread_num();
+        printf("Thread %d : Iteration %d\n", tid, i);
+    }
+
+    return 0;
+}
+```
+
+**Steps in Dev-C++:** same as above → OpenMP project → new file → paste → Compile & Run.
+
+---
+
+## 3️⃣ OpenMP – Fibonacci using tasks
+
+**File:** `program.cpp`
+
+```cpp
+#include <stdio.h>
+#include <omp.h>
+
+// Recursive Fibonacci with OpenMP Tasks
+int fib_task(int n) {
+    int x, y;
+
+    if (n < 2)
+        return n;
+
+    #pragma omp task shared(x)
+    {
+        x = fib_task(n - 1);
+    }
+
+    #pragma omp task shared(y)
+    {
+        y = fib_task(n - 2);
+    }
+
+    #pragma omp taskwait
+    return x + y;
+}
+
+int main() {
+    int n;
+    printf("Enter the number of Fibonacci terms: ");
+    scanf("%d", &n);
+
+    printf("Fibonacci series:\n");
+
+    #pragma omp parallel
+    {
+        #pragma omp single
+        {
+            for (int i = 0; i < n; i++) {
+                int result = fib_task(i);
+                // ensure all tasks for fib(i) are done
+                #pragma omp taskwait
+                printf("fib(%d) = %d\n", i, result);
+            }
+        }
+    }
+
+    return 0;
+}
+```
+
+> Note: For large `n` this becomes very slow (exponential). Use small values like 10–20.
+
+---
+
+## 4️⃣ OpenMP – Prime numbers 1 to `n` (serial vs parallel)
+
+**File:** `prime.cpp`
+
+Your code is basically fine. Just cleaned it a bit.
+
+```cpp
+#include <stdio.h>
+#include <stdlib.h>
+#include <omp.h>
+#include <math.h>
+
+int is_prime(int num) {
+    if (num < 2) return 0;
+    if (num == 2) return 1;
+    if (num % 2 == 0) return 0;
+    int limit = (int)sqrt((double)num);
+    for (int i = 3; i <= limit; i += 2) {
+        if (num % i == 0) return 0;
+    }
+    return 1;
+}
+
+int main() {
+    int n;
+    printf("Enter value of n: ");
+    scanf("%d", &n);
+
+    double start_time, end_time;
+
+    // Serial Execution
+    start_time = omp_get_wtime();
+    int serial_count = 0;
+    for (int i = 2; i <= n; i++) {
+        if (is_prime(i)) serial_count++;
+    }
+    end_time = omp_get_wtime();
+    printf("Serial Execution Time: %f seconds\n", end_time - start_time);
+
+    // Parallel Execution
+    omp_set_num_threads(4); // Set based on CPU
+    int* prime_flags = (int*)calloc(n + 1, sizeof(int));
+    if (prime_flags == NULL) {
+        printf("Memory allocation failed\n");
+        return 1;
+    }
+
+    start_time = omp_get_wtime();
+    #pragma omp parallel for schedule(dynamic, 100)
+    for (int i = 2; i <= n; i++) {
+        if (is_prime(i)) {
+            prime_flags[i] = 1;
+        }
+    }
+    end_time = omp_get_wtime();
+
+    int parallel_count = 0;
+    for (int i = 2; i <= n; i++) {
+        if (prime_flags[i]) parallel_count++;
+    }
+
+    printf("Parallel Execution Time: %f seconds\n", end_time - start_time);
+    printf("Primes found (Serial): %d, (Parallel): %d\n", serial_count, parallel_count);
+
+    free(prime_flags);
+    return 0;
+}
+```
+
+---
+
+## 5️⃣ MPI – `MPI_Send` and `MPI_Recv` demo
+
+**File:** `sr.c`
+
+```c
+#include <mpi.h>
+#include <stdio.h>
+#include <string.h>
+
+int main(int argc, char** argv) {
+    int rank, size;
+    MPI_Status status;
+
+    MPI_Init(&argc, &argv);
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    if (rank == 0) {
+        for (int i = 1; i < size; i++) {
+            char message[100];
+            sprintf(message, "Hello from process 0 to process %d", i);
+            MPI_Send(message, (int)strlen(message) + 1, MPI_CHAR, i, 0, MPI_COMM_WORLD);
+            printf("Process 0 sent message to process %d\n", i);
+        }
+    } else {
+        char recv_buf[100];
+        MPI_Recv(recv_buf, 100, MPI_CHAR, 0, 0, MPI_COMM_WORLD, &status);
+        printf("Process %d received message: %s\n", rank, recv_buf);
+    }
+
+    MPI_Finalize();
+    return 0;
+}
+```
+
+**Compile & Run (Linux / WSL):**
+
+```bash
+mpicc sr.c -o sr
+mpirun --oversubscribe -np 6 ./sr
+```
+
+---
+
+## 6️⃣ MPI – Deadlock demo & avoidance
+
+**File:** `deadlock.c`
+(First part shows possible deadlock; second part shows safe order.)
+
+```c
+#include <mpi.h>
+#include <stdio.h>
+
+int main(int argc, char** argv) {
+    int rank, send_data, recv_data;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+
+    send_data = (rank == 0) ? 100 : 200;
+
+    printf("=== Possible Deadlock Version ===\n");
+    if (rank == 0) {
+        printf("Process 0: Before Send\n");
+        MPI_Send(&send_data, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
+        printf("Process 0: After Send, Before Recv\n");
+        MPI_Recv(&recv_data, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("Process 0: Received %d\n", recv_data);
+    } else if (rank == 1) {
+        printf("Process 1: Before Send\n");
+        MPI_Send(&send_data, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+        printf("Process 1: After Send, Before Recv\n");
+        MPI_Recv(&recv_data, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("Process 1: Received %d\n", recv_data);
+    }
+
+    MPI_Barrier(MPI_COMM_WORLD);
+
+    printf("\n=== Deadlock-Free Version (Recv-then-Send) ===\n");
+    if (rank == 0) {
+        MPI_Recv(&recv_data, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("Process 0 safely received %d\n", recv_data);
+        MPI_Send(&send_data, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
+        printf("Process 0 safely sent %d\n", send_data);
+    } else if (rank == 1) {
+        MPI_Send(&send_data, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
+        printf("Process 1 safely sent %d\n", send_data);
+        MPI_Recv(&recv_data, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+        printf("Process 1 safely received %d\n", recv_data);
+    }
+
+    MPI_Finalize();
+    return 0;
+}
+```
+
+**Compile & Run:**
+
+```bash
+mpicc deadlock.c -o deadlock
+mpirun -np 2 ./deadlock
+```
+
+---
+
+## 7️⃣ MPI – Broadcast demo
+
+**File:** `broadcast.c`
+
+```c
+#include <mpi.h>
+#include <stdio.h>
+
+int main(int argc, char** argv) {
+    int rank, size;
+    int number;
+
+    MPI_Init(&argc, &argv);
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    if (rank == 0) {
+        number = 42;
+        printf("Process 0 is broadcasting number %d\n", number);
+    }
+
+    MPI_Bcast(&number, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    printf("Process %d received number %d\n", rank, number);
+
+    MPI_Finalize();
+    return 0;
+}
+```
+
+**Compile & Run:**
+
+```bash
+mpicc broadcast.c -o broadcast
+mpirun --oversubscribe -np 4 ./broadcast
+```
+
+---
+
+## 8️⃣ MPI – Scatter & Gather
+
+**File:** `sg.c`
+
+```c
+#include <mpi.h>
+#include <stdio.h>
+
+int main(int argc, char** argv) {
+    int rank, size;
+    int data[100];
+    int recv_value;
+    int gathered[100];
+
+    MPI_Init(&argc, &argv);
+
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    if (rank == 0) {
+        for (int i = 0; i < size; i++) {
+            data[i] = i * 10;
+        }
+        printf("Process 0 initialized data: ");
+        for (int i = 0; i < size; i++) {
+            printf("%d ", data[i]);
+        }
+        printf("\n");
+    }
+
+    MPI_Scatter(data, 1, MPI_INT, &recv_value, 1, MPI_INT, 0, MPI_COMM_WORLD);
+    printf("Process %d received value %d from Scatter\n", rank, recv_value);
+
+    recv_value += rank;
+
+    MPI_Gather(&recv_value, 1, MPI_INT, gathered, 1, MPI_INT, 0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        printf("Process 0 gathered data: ");
+        for (int i = 0; i < size; i++) {
+            printf("%d ", gathered[i]);
+        }
+        printf("\n");
+    }
+
+    MPI_Finalize();
+    return 0;
+}
+```
+
+**Compile & Run:**
+
+```bash
+mpicc sg.c -o sg
+mpirun --oversubscribe -np 4 ./sg
+```
+
+---
+
+## 9️⃣ MPI – `MPI_Reduce` and `MPI_Allreduce`
+
+**File:** `pg9.c`
+(Main bug fixed: all `MPI_Reduce` roots are now rank 0, which is the one printing.)
+
+```c
+#include <mpi.h>
+#include <stdio.h>
+
+int main(int argc, char** argv) {
+    int rank, size;
+    int value;
+    int sum_result, prod_result, max_result, min_result;
+    int all_sum, all_prod, all_max, all_min;
+
+    MPI_Init(&argc, &argv);
+    
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &size);
+
+    value = rank + 1;  // rank 0=1, rank 1=2, ...
+
+    printf("Process %d has value %d\n", rank, value);
+
+    // ---------- MPI_Reduce (results only at root rank 0) ----------
+    MPI_Reduce(&value, &sum_result,  1, MPI_INT, MPI_SUM,  0, MPI_COMM_WORLD);
+    MPI_Reduce(&value, &prod_result, 1, MPI_INT, MPI_PROD, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&value, &max_result,  1, MPI_INT, MPI_MAX,  0, MPI_COMM_WORLD);
+    MPI_Reduce(&value, &min_result,  1, MPI_INT, MPI_MIN,  0, MPI_COMM_WORLD);
+
+    if (rank == 0) {
+        printf("\n--- Results using MPI_Reduce (only on root) ---\n");
+        printf("Sum   = %d\n", sum_result);
+        printf("Prod  = %d\n", prod_result);
+        printf("Max   = %d\n", max_result);
+        printf("Min   = %d\n", min_result);
+    }
+
+    // ---------- MPI_Allreduce (results on all processes) ----------
+    MPI_Allreduce(&value, &all_sum,  1, MPI_INT, MPI_SUM,  MPI_COMM_WORLD);
+    MPI_Allreduce(&value, &all_prod, 1, MPI_INT, MPI_PROD, MPI_COMM_WORLD);
+    MPI_Allreduce(&value, &all_max,  1, MPI_INT, MPI_MAX,  MPI_COMM_WORLD);
+    MPI_Allreduce(&value, &all_min,  1, MPI_INT, MPI_MIN,  MPI_COMM_WORLD);
+
+    printf("Process %d - AllReduce: Sum=%d Prod=%d Max=%d Min=%d\n",
+           rank, all_sum, all_prod, all_max, all_min);
+
+    MPI_Finalize();
+    return 0;
+}
+```
+
+**Compile & Run:**
+
+```bash
+mpicc pg9.c -o pg9
+mpirun -np 4 ./pg9
+```
+
+---
+
+If you want, next I can:
+
+* Put all **OpenMP** programs in **one PDF lab sheet**,
+* Or all **MPI** programs in one place with **short viva-style explanations**.
